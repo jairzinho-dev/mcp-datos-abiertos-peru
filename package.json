@@ -1,0 +1,25 @@
+{
+  "name": "mcp-datos-abiertos-peru",
+  "version": "0.1.0",
+  "description": "Servidor MCP que da a un LLM acceso directo a la Plataforma Nacional de Datos Abiertos del Perú (datosabiertos.gob.pe)",
+  "type": "module",
+  "main": "src/server.js",
+  "bin": {
+    "mcp-datos-abiertos-peru": "src/server.js"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "probar": "node scripts/probar.js",
+    "inspector": "npx @modelcontextprotocol/inspector node src/server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.31.0",
+    "csv-parse": "^7.0.3",
+    "iconv-lite": "^0.7.3",
+    "zod": "^4.6.7"
+  }
+}
