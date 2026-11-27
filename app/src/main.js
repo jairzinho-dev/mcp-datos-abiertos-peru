@@ -127,10 +127,16 @@ async function preguntar(pregunta) {
             d.append(pre);
           }
           espera.textContent = 'Pensando';
+        } else if (e.tipo === 'espera') {
+          const d = document.createElement('div');
+          d.className = 'paso';
+          d.textContent = `⏳ Esperando ${e.segundos} s por el ${e.motivo}; luego se reintenta…`;
+          pasos.append(d);
+          espera.textContent = `Esperando ${e.segundos} s`;
         } else if (e.tipo === 'rotacion') {
           const d = document.createElement('div');
           d.className = 'paso mal';
-          d.textContent = `↻ Cambio de proveedor: ${e.motivo}`;
+          d.textContent = `↻ No respondió ${e.motivo.length > 220 ? e.motivo.slice(0, 220) + "…" : e.motivo}`;
           pasos.append(d);
         } else if (e.tipo === 'llm') {
           $('#proveedor-actual').textContent = `Respondiendo con ${e.proveedor} · ${e.modelo}`;

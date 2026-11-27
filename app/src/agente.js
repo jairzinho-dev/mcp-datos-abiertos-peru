@@ -168,12 +168,30 @@ function aAnthropic(historial) {
 // ---------- llamadas a cada tipo de API ----------
 
 class ErrorProveedor extends Error {
-  constructor(mensaje, { status, rotar = true } = {}) {
+  constructor(mensaje, { status, rotar = true, espera = null } = {}) {
     super(mensaje);
     this.status = status;
     this.rotar = rotar;
+    this.espera = espera; // segundos que el proveedor pide esperar (límite por minuto), si los indica
   }
 }
+
+/** Segundos de espera que indica un 429: cabecera Retry-After, RetryInfo de Gemini o el texto del error. */
+function segundosDeEspera(r) {
+  const h = Object.entries(r.headers || {}).find(([k]) => k.toLowerCase() === 'retry-after')?.[1];
+  if (h && /^\d+(\.\d+)?$/.test(String(h).trim())) return Number(h);
+  const d = r.data;
+  const detalles = Array.isArray(d) ? d[0]?.error?.details : d?.error?.details;
+  const retry = detalles?.find?.((x) => x.retryDelay)?.retryDelay;
+  if (retry) return parseFloat(retry);
+  const texto = typeof d === 'string' ? d : JSON.stringify(d || '');
+  const m = /(?:try again|retry) in ([\d.]+)\s*(ms|s)/i.exec(texto);
+  if (m) return m[2].toLowerCase() === 'ms' ? Number(m[1]) / 1000 : Number(m[1]);
+  return null;
+}
+
+const errorDeRespuesta = (r) =>
+  new ErrorProveedor(mensajeDeError(r), { status: r.status, espera: r.status === 429 ? segundosDeEspera(r) : null });
 
 function mensajeDeError(r) {
   const d = r.data;
@@ -196,7 +214,7 @@ async function llamarOpenAI(http, { base, key, modelo }, historial, herramientas
     headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', 'X-Title': 'Datos Abiertos Peru (app MCP)' },
     body,
   });
-  if (r.status >= 400) throw new ErrorProveedor(mensajeDeError(r), { status: r.status });
+  if (r.status >= 400) throw errorDeRespuesta(r);
   const msg = r.data?.choices?.[0]?.message;
   if (!msg) throw new ErrorProveedor('Respuesta sin "choices"');
   return {
@@ -229,7 +247,7 @@ async function llamarAnthropic(http, { base, key, modelo }, historial, herramien
     body.fallbacks = 'default';
   }
   const r = await http.pedir({ url: `${base.replace(/\/$/, '')}/messages`, method: 'POST', headers, body });
-  if (r.status >= 400) throw new ErrorProveedor(mensajeDeError(r), { status: r.status });
+  if (r.status >= 400) throw errorDeRespuesta(r);
   const d = r.data;
   if (d?.stop_reason === 'refusal') throw new ErrorProveedor('El modelo declinó responder (refusal)');
   const contenido = d?.content || [];
@@ -264,10 +282,34 @@ const enfriamiento = new Map(); // key → instante hasta el que no se intenta
  * Errores 400 (petición inválida para ese modelo) saltan al siguiente proveedor;
  * 401/403/429/5xx o de red saltan a la siguiente key del mismo proveedor.
  */
-async function llamarConRotacion({ http, config, historial, herramientas, onEvento }) {
+const ESPERA_MAXIMA_S = 75; // si el proveedor pide esperar más que esto, se informa el error
+
+/**
+ * Llama al LLM rotando proveedores y keys. Si todos están en su límite por minuto (429) y piden
+ * una espera corta, espera ese tiempo y vuelve a intentar (hasta 3 rondas).
+ */
+async function llamarConRotacion(o) {
+  for (let ronda = 0; ; ronda++) {
+    try {
+      return await unaRonda(o);
+    } catch (e) {
+      const esperas = (e.fallos || []).map((f) => f.espera);
+      const todasConEspera = esperas.length && esperas.every((x) => x !== null && x !== undefined);
+      const espera = todasConEspera ? Math.max(...esperas) : null;
+      if (ronda >= 3 || espera === null || espera > ESPERA_MAXIMA_S) throw e;
+      const segundos = Math.ceil(espera + 1);
+      o.onEvento?.({ tipo: 'espera', segundos, motivo: 'límite de tokens por minuto del plan gratuito' });
+      for (const f of e.fallos) enfriamiento.delete(f.key);
+      await new Promise((ok) => setTimeout(ok, segundos * 1000));
+    }
+  }
+}
+
+async function unaRonda({ http, config, historial, herramientas, onEvento }) {
   const orden = ordenDeIntento(config);
   if (!orden.length) throw new Error('No hay ningún proveedor con API key. Agrega una en Ajustes.');
   const fallos = [];
+  const detalle = [];
   // Primero las keys que no fallaron hace poco; las "enfriadas" quedan como último recurso.
   const intentos = [];
   const enfriados = [];
@@ -297,13 +339,16 @@ async function llamarConRotacion({ http, config, historial, herramientas, onEven
     } catch (e) {
       const motivo = `${def.nombre} (key ${i + 1}/${total}): ${e.message}`;
       fallos.push(motivo);
+      detalle.push({ key, espera: e.status === 429 ? e.espera : null });
       onEvento?.({ tipo: 'rotacion', motivo });
       // key inválida: 10 min fuera; cuota o caída: 1 min fuera
       enfriamiento.set(key, Date.now() + (e.status === 401 || e.status === 403 ? 600_000 : 60_000));
       if (e.status === 400 || e.status === 404) saltar = id; // el problema es del modelo/petición, no de la key
     }
   }
-  throw new Error(`Ningún proveedor respondió:\n- ${fallos.join('\n- ')}`);
+  const error = new Error(`Ningún proveedor respondió:\n- ${fallos.join('\n- ')}`);
+  error.fallos = detalle;
+  throw error;
 }
 
 // ---------- ciclo del agente ----------
@@ -360,6 +405,9 @@ export async function responder({ pregunta, historial, cliente, config, http, on
         contenido = `Error: ${e.message}`;
         error = true;
       }
+      try {
+        contenido = JSON.stringify(JSON.parse(contenido)); // sin sangrías ni saltos: ~20 % menos tokens
+      } catch {}
       if (contenido.length > MAX_CHARS_HERRAMIENTA) {
         contenido = contenido.slice(0, MAX_CHARS_HERRAMIENTA) + '\n…[recortado: pide menos resultados con "limite"]';
       }

@@ -87,6 +87,19 @@ export function crearServidorMcp(plataforma) {
     return { url };
   }
 
+  // Las descripciones del portal traen HTML (<p>, <style>, &nbsp;…): se limpia al responder.
+  const sinHtml = (t) =>
+    String(t || '')
+      .replace(/<(style|script)[\s\S]*?<\/\1>/gi, ' ')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/\s+/g, ' ')
+      .trim();
+
   function resumenDataset(d) {
     return {
       nombre: d.nombre,
@@ -94,7 +107,7 @@ export function crearServidorMcp(plataforma) {
       entidades: d.entidades,
       modificado: d.modificado,
       relevancia: d.relevancia,
-      descripcion: d.descripcion.length > 280 ? d.descripcion.slice(0, 280) + '…' : d.descripcion,
+      descripcion: ((t) => (t.length > 240 ? t.slice(0, 240) + '…' : t))(sinHtml(d.descripcion)),
       formatos: [...new Set(d.recursos.map((r) => r.formato))],
       url: d.url,
     };
@@ -140,7 +153,8 @@ export function crearServidorMcp(plataforma) {
     envolver('ver_dataset', async ({ nombre }) => {
       try {
         const r = await api.ckan('package_show', { id: nombre });
-        return api.normalizarDataset(Array.isArray(r) ? r[0] : r);
+        const d = api.normalizarDataset(Array.isArray(r) ? r[0] : r);
+        return { ...d, descripcion: sinHtml(d.descripcion), recursos: d.recursos.map((x) => ({ ...x, descripcion: x.descripcion ? sinHtml(x.descripcion) : undefined })) };
       } catch (e) {
         const local = await indice.buscarPorNombreOId(nombre);
         if (local) return { ...local, nota: 'Datos del índice local (la API en vivo no respondió)' };
