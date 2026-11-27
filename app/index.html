@@ -7,8 +7,9 @@
     <title>Datos Abiertos Perú</title>
     <link rel="stylesheet" href="./src/estilos.css" />
   </head>
-  <body>
+  <body class="arranque">
     <header class="barra">
+      <button id="btn-lista" class="icono" aria-label="Conversaciones" title="Conversaciones">☰</button>
       <div class="marca">
         <span class="logo" aria-hidden="true">◧</span>
         <div>
@@ -16,26 +17,12 @@
           <p id="estado-catalogo" class="sub">Cargando catálogo…</p>
         </div>
       </div>
-      <button id="btn-ajustes" class="icono" aria-label="Ajustes">⚙</button>
+      <button id="btn-nueva" class="icono" aria-label="Nueva conversación" title="Nueva conversación">＋</button>
+      <button id="btn-ajustes" class="icono" aria-label="Ajustes" title="Ajustes">⚙</button>
     </header>
 
     <main id="vista-chat" class="vista">
-      <section id="mensajes" class="mensajes" aria-live="polite">
-        <div id="bienvenida" class="bienvenida">
-          <h2>Pregunta sobre datos públicos del Perú</h2>
-          <p>
-            La app busca en la Plataforma Nacional de Datos Abiertos, calcula la cifra con los archivos oficiales y te dice
-            de dónde salió. Usa el modelo de lenguaje que configures en Ajustes.
-          </p>
-          <div class="ejemplos">
-            <button class="ejemplo">¿Cuántos fallecidos por COVID-19 registró Tacna, por sexo?</button>
-            <button class="ejemplo">¿Qué entidades publican más datasets?</button>
-            <button class="ejemplo">¿Hay datos de ejecución presupuestal de municipalidades?</button>
-            <button class="ejemplo">¿Cuánta energía consumieron los clientes de Electro Puno por provincia en junio de 2023?</button>
-            <button class="ejemplo">¿Qué significan las columnas del dataset de atenciones de IPRESS privadas de SUSALUD?</button>
-          </div>
-        </div>
-      </section>
+      <section id="mensajes" class="mensajes" aria-live="polite"></section>
       <form id="formulario" class="compositor">
         <textarea id="entrada" rows="1" placeholder="Escribe tu pregunta…" required></textarea>
         <button id="btn-enviar" type="submit" aria-label="Enviar">➤</button>
@@ -43,8 +30,20 @@
       <p id="proveedor-actual" class="pie"></p>
     </main>
 
+    <section id="vista-lista" class="vista oculta">
+      <div class="panel">
+        <div class="fila-titulo">
+          <h2>Conversaciones</h2>
+          <button id="btn-cerrar-lista" class="secundario">Volver</button>
+        </div>
+        <button id="btn-nueva-lista" class="primario">＋ Nueva conversación</button>
+        <ul id="conversaciones" class="conversaciones"></ul>
+        <p id="sin-conversaciones" class="sub centro oculta">Todavía no hay conversaciones guardadas.</p>
+      </div>
+    </section>
+
     <section id="vista-ajustes" class="vista oculta">
-      <div class="ajustes">
+      <div class="panel">
         <div class="fila-titulo">
           <h2>Ajustes</h2>
           <button id="btn-cerrar-ajustes" class="secundario">Volver al chat</button>
@@ -66,17 +65,31 @@
           <div id="lista-proveedores"></div>
         </article>
 
-        <article class="tarjeta">
-          <h3>Conversación</h3>
-          <button id="btn-nueva" class="secundario">Empezar una conversación nueva</button>
-        </article>
-
         <p class="sub centro">
           Proyecto académico · Universidad de Lima · Código:
           github.com/jairzinho-dev/mcp-datos-abiertos-peru
         </p>
       </div>
     </section>
+
+    <div id="aviso" class="aviso" role="status"></div>
+
+    <template id="tpl-bienvenida">
+      <div class="bienvenida">
+        <span class="logo-grande" aria-hidden="true">◧</span>
+        <h2>Pregunta sobre datos públicos del Perú</h2>
+        <p>
+          La app busca en la Plataforma Nacional de Datos Abiertos, calcula la cifra con los archivos oficiales (CSV, Excel,
+          ZIP, PDF) y te dice de dónde salió. Usa el modelo de lenguaje que configures en Ajustes.
+        </p>
+        <div class="ejemplos">
+          <button class="ejemplo" style="--i: 0">¿Cuántos fallecidos por COVID-19 registró Tacna, por sexo?</button>
+          <button class="ejemplo" style="--i: 1">¿Qué entidades publican más datasets?</button>
+          <button class="ejemplo" style="--i: 2">¿Cuánta energía consumieron los clientes de Electro Puno por provincia en junio de 2023?</button>
+          <button class="ejemplo" style="--i: 3">¿Qué significan las columnas del dataset de atenciones de IPRESS privadas de SUSALUD?</button>
+        </div>
+      </div>
+    </template>
 
     <script type="module" src="./src/main.js"></script>
   </body>

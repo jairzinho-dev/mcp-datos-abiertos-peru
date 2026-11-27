@@ -119,22 +119,31 @@ export function limpiarEsquema(s) {
 
 const idSeguro = (id) => String(id).replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 64);
 
-function aOpenAI(historial) {
+// Gemini 3 exige que cada llamada a herramienta del historial vuelva con su "firma de pensamiento"
+// (extra_content.google.thought_signature). Las llamadas que no generó Gemini (por ejemplo, si antes
+// respondió Groq) llevan el valor que la documentación indica para omitir la validación.
+const FIRMA_OMITIDA = 'skip_thought_signature_validator';
+const firmaDe = (tc) => tc?.extra_content?.google?.thought_signature;
+
+function aOpenAI(historial, { gemini = false } = {}) {
   const out = [{ role: 'system', content: INSTRUCCIONES_SISTEMA }];
   for (const m of historial) {
     if (m.rol === 'usuario') out.push({ role: 'user', content: m.texto });
     else if (m.rol === 'asistente') {
       const msg = { role: 'assistant', content: m.texto || '' };
       if (m.llamadas?.length) {
-        msg.tool_calls = m.llamadas.map((l) => ({
-          id: idSeguro(l.id),
-          type: 'function',
-          function: { name: l.nombre, arguments: JSON.stringify(l.args ?? {}) },
-        }));
+        const crudas = m.crudoOpenAI?.tool_calls || [];
+        msg.tool_calls = m.llamadas.map((l, i) => {
+          const tc = { id: l.id, type: 'function', function: { name: l.nombre, arguments: JSON.stringify(l.args ?? {}) } };
+          if (gemini && firmaDe(crudas[i])) tc.extra_content = structuredClone(crudas[i].extra_content);
+          return tc;
+        });
+        // si ninguna llamada trae firma (no la generó Gemini), se marca la primera para omitir la validación
+        if (gemini && !msg.tool_calls.some(firmaDe)) msg.tool_calls[0].extra_content = { google: { thought_signature: FIRMA_OMITIDA } };
       }
       out.push(msg);
     } else if (m.rol === 'herramienta') {
-      out.push({ role: 'tool', tool_call_id: idSeguro(m.id), content: m.contenido });
+      out.push({ role: 'tool', tool_call_id: m.id, content: m.contenido });
     }
   }
   return out;
@@ -225,7 +234,8 @@ export function compactarHistorial(historial, { agresivo = false } = {}) {
 }
 
 async function llamarOpenAI(http, { base, key, modelo }, historial, herramientas) {
-  const body = { model: modelo, messages: aOpenAI(historial) };
+  const gemini = /generativelanguage\.googleapis\.com|aiplatform\.googleapis\.com/.test(base) || /^gemini/i.test(modelo);
+  const body = { model: modelo, messages: aOpenAI(historial, { gemini }) };
   if (herramientas.length) {
     body.tools = herramientas.map((h) => ({
       type: 'function',
@@ -242,9 +252,11 @@ async function llamarOpenAI(http, { base, key, modelo }, historial, herramientas
   if (r.status >= 400) throw errorDeRespuesta(r);
   const msg = r.data?.choices?.[0]?.message;
   if (!msg) throw new ErrorProveedor('Respuesta sin "choices"');
+  const llamadasCrudas = msg.tool_calls || [];
   return {
     texto: typeof msg.content === 'string' ? msg.content : (msg.content || []).map((c) => c.text || '').join(''),
-    llamadas: (msg.tool_calls || []).map((t, i) => {
+    crudoOpenAI: llamadasCrudas.length ? { tool_calls: llamadasCrudas.map((t) => ({ extra_content: t.extra_content })) } : undefined,
+    llamadas: llamadasCrudas.map((t, i) => {
       let args = {};
       try {
         args = typeof t.function.arguments === 'string' ? JSON.parse(t.function.arguments || '{}') : t.function.arguments || {};
@@ -408,6 +420,16 @@ export async function responder({ pregunta, historial, cliente, config, http, on
       texto = p.messages.map((m) => m.content.text).join('\n');
     } catch {}
   }
+  const largoInicial = historial.length;
+  try {
+    return await cicloDelAgente({ historial, texto, herramientas, cliente, config, http, onEvento, maxPasos });
+  } catch (e) {
+    historial.length = largoInicial;
+    throw e;
+  }
+}
+
+async function cicloDelAgente({ historial, texto, herramientas, cliente, config, http, onEvento, maxPasos }) {
   historial.push({ rol: 'usuario', texto });
 
   const traza = { pasos: [], llamadasLLM: 0, tokens: { entrada: 0, salida: 0 }, proveedores: new Set() };
@@ -420,8 +442,11 @@ export async function responder({ pregunta, historial, cliente, config, http, on
       traza.tokens.salida += r.uso.salida || 0;
     }
     onEvento?.({ tipo: 'llm', proveedor: r.nombreProveedor, modelo: r.modelo, ms: r.ms });
-    historial.push({ rol: 'asistente', texto: r.texto, llamadas: r.llamadas, crudoAnthropic: r.crudoAnthropic });
-    if (!r.llamadas.length) return { texto: r.texto, traza: { ...traza, proveedores: [...traza.proveedores] } };
+    historial.push({ rol: 'asistente', texto: r.texto, llamadas: r.llamadas, crudoAnthropic: r.crudoAnthropic, crudoOpenAI: r.crudoOpenAI });
+    if (!r.llamadas.length) {
+      const final = r.texto?.trim() ? r.texto : '_(El modelo terminó sin escribir una respuesta. Intenta reformular la pregunta o cambiar de modelo.)_';
+      return { texto: final, traza: { ...traza, proveedores: [...traza.proveedores] } };
+    }
     if (r.texto) onEvento?.({ tipo: 'pensamiento', texto: r.texto });
 
     for (const l of r.llamadas) {
