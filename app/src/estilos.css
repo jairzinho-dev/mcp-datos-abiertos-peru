@@ -178,6 +178,34 @@ body.ocupado #btn-nueva { opacity: 0.35; }
 .resultado.ok { color: var(--ok); }
 .resultado.mal { color: var(--mal); }
 
+/* ---------- proveedores conectados, selector y formulario ---------- */
+#lista-proveedores { display: flex; flex-direction: column; gap: 10px; }
+.conectado { border: 1px solid var(--borde); border-radius: 14px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.conectado.es-principal { border-color: var(--acento); box-shadow: inset 3px 0 0 var(--acento); }
+.conectado .fila { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.conectado .info { display: flex; flex-direction: column; min-width: 0; }
+.conectado .info .sub { overflow-wrap: anywhere; }
+.acciones { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.interruptor { display: flex; align-items: center; gap: 6px; font-size: 14px; color: var(--tenue); }
+.elegir .opciones { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; margin: 8px 0; }
+.opcion {
+  text-align: left; background: var(--superficie); border: 1px solid var(--borde); border-radius: 14px; padding: 10px 12px;
+  color: var(--texto); display: flex; flex-direction: column; gap: 3px; position: relative;
+  animation: subir 0.35s var(--curva) both; animation-delay: calc(var(--i, 0) * 0.04s);
+}
+.opcion:hover { border-color: var(--acento); }
+.opcion .etiqueta { position: absolute; top: 8px; right: 8px; }
+.formulario { border: 1px solid var(--acento); border-radius: 14px; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.formulario h4 { margin: 0; font-size: 16px; }
+.formulario label { font-size: 13px; color: var(--tenue); display: flex; flex-direction: column; gap: 4px; }
+.formulario input, .formulario select {
+  font: inherit; font-size: 14px; padding: 9px 10px; border: 1px solid var(--borde); border-radius: 10px; background: var(--fondo); color: var(--texto); width: 100%;
+}
+.formulario input:focus, .formulario select:focus { outline: none; border-color: var(--acento); }
+.con-boton { display: flex; gap: 6px; align-items: center; }
+.resultado:empty { display: none; }
+.resultado { margin: 0; }
+
 /* ---------- aviso flotante ---------- */
 .aviso {
   position: fixed; left: 50%; bottom: calc(86px + env(safe-area-inset-bottom)); transform: translate(-50%, 20px);

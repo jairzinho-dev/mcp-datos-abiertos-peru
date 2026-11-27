@@ -95,7 +95,10 @@ function mostrarVista(nombre) {
   // la lista entra desde la izquierda (como un cajón); ajustes desde la derecha; el chat, según de dónde se vuelve
   el.classList.add(nombre === 'lista' || (nombre === 'chat' && desde === 'ajustes') ? 'entra-izq' : 'entra-der');
   vistaActual = nombre;
-  if (nombre === 'ajustes') pintarProveedores();
+  if (nombre === 'ajustes') {
+    edicion = null;
+    pintarProveedores();
+  }
   if (nombre === 'lista') pintarListaConversaciones();
 }
 
@@ -410,124 +413,200 @@ $('#entrada').addEventListener('keydown', (ev) => {
   }
 });
 
-// ---------- ajustes ----------
+// ---------- ajustes: proveedores de LLM ----------
+// Arriba, los proveedores ya conectados (tarjetas compactas). "Conectar un proveedor" muestra
+// primero la lista para elegir y luego solo el formulario de ese proveedor.
+
+let edicion = null; // null | 'elegir' | id del proveedor que se está conectando o editando
+
+const tieneKey = (id) => config.proveedores[id].keys.length > 0;
+const partirKeys = (t) => t.split(/[\s,;]+/).map((k) => k.trim()).filter(Boolean);
+const enmascarar = (k) => (k.length > 10 ? `${k.slice(0, 4)}…${k.slice(-4)}` : '••••');
+
+function elegirModeloPorDefecto(c, modelos, primeraVez) {
+  // al conectar por primera vez se prefiere el más reciente (el de fábrica puede estar listado pero
+  // restringido, como los Gemini 2.5 para cuentas nuevas); al volver a probar se respeta la elección
+  if (!primeraVez && modelos.includes(c.modelo)) return c.modelo;
+  // si el modelo guardado no está (p. ej. Google cerró los Gemini 2.5 a cuentas nuevas), el "flash"
+  // estable más reciente; si no hay, el primero de la lista
+  const version = (id) => parseFloat(/(\d+(?:\.\d+)?)/.exec(id)?.[1] || '0');
+  const estables = modelos.filter((m) => /flash/i.test(m) && !/lite|preview|exp|image|tts|audio|live|thinking/i.test(m));
+  const mejor = estables.sort((a, b) => version(b) - version(a))[0];
+  if (mejor) return mejor;
+  return modelos.includes(c.modelo) ? c.modelo : modelos[0] || c.modelo;
+}
 
 function pintarProveedores() {
   const cont = $('#lista-proveedores');
   cont.innerHTML = '';
-  for (const p of PROVEEDORES) {
+  const conectados = PROVEEDORES.filter((p) => tieneKey(p.id)).sort((a, b) => (b.id === config.activo) - (a.id === config.activo));
+  if (!conectados.length && edicion === null) edicion = 'elegir';
+
+  for (const p of conectados) {
     const c = config.proveedores[p.id];
-    const div = document.createElement('div');
-    div.className = 'proveedor';
-    div.innerHTML = `
-      <div class="cab">
-        <strong>${escapar(p.nombre)}</strong>
-        <span>
-          ${config.activo === p.id ? '<span class="etiqueta">principal</span>' : `<button class="secundario principal">Usar como principal</button>`}
-        </span>
+    const principal = config.activo === p.id;
+    const card = document.createElement('div');
+    card.className = 'conectado entra' + (principal ? ' es-principal' : '');
+    card.innerHTML = `
+      <div class="fila">
+        <div class="info">
+          <strong>${escapar(p.nombre)}</strong>
+          <span class="sub">${escapar(c.modelo || 'sin modelo')} · ${c.keys.length} key${c.keys.length === 1 ? '' : 's'} (${escapar(c.keys.map(enmascarar).join(', '))})</span>
+        </div>
+        ${principal ? '<span class="etiqueta">principal</span>' : ''}
       </div>
-      <p class="sub">${escapar(p.ayuda)}</p>
-      <label>API key(s) — una por línea
-        <textarea class="keys oculto" rows="2" spellcheck="false" autocomplete="off">${escapar(c.keys.join('\n'))}</textarea>
-      </label>
-      <label>Modelo
-        <select class="lista-modelos"></select>
-        <input type="text" class="modelo oculta" value="${escapar(c.modelo)}" spellcheck="false" placeholder="Nombre exacto del modelo" />
-      </label>
-      <label>URL base
-        <input type="url" class="base" value="${escapar(c.base)}" spellcheck="false" ${p.id === 'personalizado' ? '' : 'readonly'} />
-      </label>
       <div class="acciones">
-        <label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" class="habilitado" ${c.habilitado ? 'checked' : ''}/> usar en la rotación</label>
-        <button class="secundario ver">Mostrar keys</button>
-        <button class="secundario probar">Probar y cargar modelos</button>
-        <span class="resultado"></span>
+        ${principal ? '' : '<button class="secundario hacer-principal">Usar como principal</button>'}
+        ${principal ? '' : `<label class="interruptor"><input type="checkbox" class="respaldo" ${c.habilitado ? 'checked' : ''}/> de respaldo</label>`}
+        <button class="secundario editar">Editar</button>
+        <button class="secundario quitar">Quitar</button>
       </div>`;
-    // Lista desplegable de modelos (un <datalist> no sirve en el WebView de Android: solo sugiere lo
-    // que coincide con lo ya escrito). La última opción permite escribir el nombre a mano.
-    const lista = div.querySelector('.lista-modelos');
-    const campo = div.querySelector('.modelo');
-    const OTRO = '__otro__';
-    const guardar = () => {
-      c.keys = div.querySelector('.keys').value.split('\n').map((k) => k.trim()).filter(Boolean);
-      c.modelo = campo.value.trim();
-      c.base = div.querySelector('.base').value.trim();
-      c.habilitado = div.querySelector('.habilitado').checked;
+    card.querySelector('.hacer-principal')?.addEventListener('click', () => {
+      config.activo = p.id;
+      guardarConfig();
+      aviso(`${p.nombre} es ahora el proveedor principal`);
+      pintarProveedores();
+      pintarPie();
+    });
+    card.querySelector('.respaldo')?.addEventListener('change', (ev) => {
+      c.habilitado = ev.target.checked;
       guardarConfig();
       pintarPie();
-    };
-    const pintarLista = () => {
-      const modelos = [...new Set([c.modelo, ...(c.modelos || [])].filter(Boolean))];
-      lista.innerHTML =
-        modelos.map((m) => `<option value="${escapar(m)}"${m === c.modelo ? ' selected' : ''}>${escapar(m)}</option>`).join('') +
-        `<option value="${OTRO}">Otro (escribir el nombre)…</option>`;
-      campo.classList.toggle('oculta', modelos.length > 0);
-      if (!modelos.length) lista.value = OTRO;
-    };
-    pintarLista();
-    lista.addEventListener('change', () => {
-      if (lista.value === OTRO) {
-        campo.classList.remove('oculta');
-        campo.focus();
-        return;
-      }
-      campo.classList.add('oculta');
-      campo.value = lista.value;
-      guardar();
     });
-    // 'input' además de 'change': en Android el cambio se guarda aunque no se salga del campo
-    for (const el of div.querySelectorAll('textarea, input')) {
-      el.addEventListener('change', guardar);
-      el.addEventListener('input', guardar);
-    }
-    div.querySelector('.principal')?.addEventListener('click', () => {
-      config.activo = p.id;
+    card.querySelector('.editar').addEventListener('click', () => {
+      edicion = p.id;
+      pintarProveedores();
+    });
+    card.querySelector('.quitar').addEventListener('click', () => {
+      if (!confirm(`¿Quitar ${p.nombre} y sus keys de este dispositivo?`)) return;
+      c.keys = [];
+      c.modelos = [];
+      if (config.activo === p.id) config.activo = PROVEEDORES.find((x) => x.id !== p.id && tieneKey(x.id))?.id || config.activo;
       guardarConfig();
       pintarProveedores();
       pintarPie();
-      aviso(`${p.nombre} es ahora el proveedor principal`);
     });
-    div.querySelector('.ver').addEventListener('click', (ev) => {
-      const t = div.querySelector('.keys');
-      t.classList.toggle('oculto');
-      ev.target.textContent = t.classList.contains('oculto') ? 'Mostrar keys' : 'Ocultar keys';
-    });
-    div.querySelector('.probar').addEventListener('click', async () => {
-      guardar();
-      const res = div.querySelector('.resultado');
-      if (!c.keys.length || !c.base) {
-        res.className = 'resultado mal';
-        res.textContent = 'Falta la key o la URL';
-        return;
-      }
-      res.className = 'resultado';
-      res.textContent = 'Probando…';
-      try {
-        const modelos = await listarModelos(plataforma.http, p.id, { base: c.base, key: c.keys[0] });
-        c.modelos = modelos;
-        // Si el modelo elegido ya no está disponible para esta key (p. ej. Google cerró los Gemini 2.5
-        // a cuentas nuevas), se elige el "flash" estable más reciente de la lista.
-        if (!modelos.includes(c.modelo)) {
-          const version = (id) => parseFloat(/(\d+(?:\.\d+)?)/.exec(id)?.[1] || '0');
-          const estables = modelos.filter((m) => /flash/i.test(m) && !/lite|preview|exp|image|tts|audio|live|thinking/i.test(m));
-          const mejor = estables.sort((a, b) => version(b) - version(a))[0];
-          if (mejor) {
-            c.modelo = mejor;
-            campo.value = mejor;
-          }
-        }
-        guardarConfig();
-        pintarLista();
-        pintarPie();
-        res.className = 'resultado ok';
-        res.textContent = `✓ key válida · ${modelos.length} modelos de chat: elígelo en la lista Modelo`;
-      } catch (e) {
-        res.className = 'resultado mal';
-        res.textContent = `✗ ${e.message}`;
-      }
-    });
-    cont.append(div);
+    cont.append(card);
   }
+
+  if (edicion === null) {
+    const b = document.createElement('button');
+    b.className = 'primario entra';
+    b.textContent = conectados.length ? '＋ Conectar otro proveedor' : '＋ Conectar un proveedor';
+    b.addEventListener('click', () => {
+      edicion = 'elegir';
+      pintarProveedores();
+    });
+    cont.append(b);
+  } else if (edicion === 'elegir') {
+    const panel = document.createElement('div');
+    panel.className = 'elegir entra';
+    panel.innerHTML = `<p class="sub">¿De qué proveedor es tu API key?</p><div class="opciones"></div>
+      ${conectados.length ? '<button class="secundario cancelar">Cancelar</button>' : ''}`;
+    PROVEEDORES.forEach((p, i) => {
+      const o = document.createElement('button');
+      o.className = 'opcion';
+      o.style.setProperty('--i', i);
+      o.innerHTML = `<strong>${escapar(p.nombre)}</strong><span class="sub">${escapar(p.ayuda)}</span>${tieneKey(p.id) ? '<span class="etiqueta">conectado</span>' : ''}`;
+      o.addEventListener('click', () => {
+        edicion = p.id;
+        pintarProveedores();
+      });
+      panel.querySelector('.opciones').append(o);
+    });
+    panel.querySelector('.cancelar')?.addEventListener('click', () => {
+      edicion = null;
+      pintarProveedores();
+    });
+    cont.append(panel);
+  } else {
+    cont.append(formularioProveedor(PROVEEDORES.find((p) => p.id === edicion)));
+  }
+}
+
+function formularioProveedor(p) {
+  const c = config.proveedores[p.id];
+  const f = document.createElement('div');
+  f.className = 'formulario entra';
+  f.innerHTML = `
+    <h4>Conectar ${escapar(p.nombre)}</h4>
+    <p class="sub">${escapar(p.ayuda)}</p>
+    <label>API key
+      <div class="con-boton">
+        <input type="password" class="key" value="${escapar(c.keys.join(', '))}" placeholder="Pega aquí tu API key" spellcheck="false" autocomplete="off" />
+        <button class="icono ver" type="button" aria-label="Mostrar u ocultar">👁</button>
+      </div>
+      <span class="sub">¿Tienes varias? Sepáralas con comas: si una se queda sin cuota, se usa la siguiente.</span>
+    </label>
+    <label class="${p.id === 'personalizado' ? '' : 'oculta'}">URL base (compatible con OpenAI)
+      <input type="url" class="base" value="${escapar(c.base)}" placeholder="https://…/v1" spellcheck="false" />
+    </label>
+    <label class="bloque-modelo ${c.modelos?.length ? '' : 'oculta'}">Modelo
+      <select class="lista-modelos"></select>
+    </label>
+    <p class="resultado"></p>
+    <div class="acciones">
+      <button class="primario probar">Probar y guardar</button>
+      <button class="secundario cancelar">${tieneKey(p.id) ? 'Listo' : 'Cancelar'}</button>
+    </div>`;
+  const lista = f.querySelector('.lista-modelos');
+  const res = f.querySelector('.resultado');
+  const pintarModelos = () => {
+    const modelos = c.modelos?.length ? c.modelos : [c.modelo].filter(Boolean);
+    lista.innerHTML = modelos.map((m) => `<option value="${escapar(m)}"${m === c.modelo ? ' selected' : ''}>${escapar(m)}</option>`).join('');
+  };
+  pintarModelos();
+  lista.addEventListener('change', () => {
+    c.modelo = lista.value;
+    guardarConfig();
+    pintarPie();
+  });
+  f.querySelector('.ver').addEventListener('click', () => {
+    const i = f.querySelector('.key');
+    i.type = i.type === 'password' ? 'text' : 'password';
+  });
+  f.querySelector('.cancelar').addEventListener('click', () => {
+    edicion = null;
+    pintarProveedores();
+  });
+  f.querySelector('.probar').addEventListener('click', async (ev) => {
+    const keys = partirKeys(f.querySelector('.key').value);
+    const base = (f.querySelector('.base').value || c.base).trim();
+    if (!keys.length) {
+      res.className = 'resultado mal';
+      res.textContent = 'Pega la API key primero';
+      return;
+    }
+    if (!base) {
+      res.className = 'resultado mal';
+      res.textContent = 'Falta la URL base';
+      return;
+    }
+    ev.target.disabled = true;
+    res.className = 'resultado';
+    res.innerHTML = '<span class="girando"></span> Probando la key…';
+    try {
+      const modelos = await listarModelos(plataforma.http, p.id, { base, key: keys[0] });
+      const primeraVez = !c.modelos?.length;
+      Object.assign(c, { keys, base, modelos, habilitado: true, indiceKey: 0 });
+      c.modelo = elegirModeloPorDefecto(c, modelos, primeraVez);
+      // el primer proveedor conectado (o si el principal no tiene key) pasa a ser el principal
+      if (!tieneKey(config.activo) || config.activo === p.id || !PROVEEDORES.some((x) => x.id !== p.id && tieneKey(x.id))) config.activo = p.id;
+      guardarConfig();
+      pintarPie();
+      pintarModelos();
+      f.querySelector('.bloque-modelo').classList.remove('oculta');
+      f.querySelector('.cancelar').textContent = 'Listo';
+      res.className = 'resultado ok';
+      res.textContent = `✓ Conectado · ${modelos.length} modelos de chat. Se eligió ${c.modelo}; puedes cambiarlo arriba.`;
+    } catch (e) {
+      res.className = 'resultado mal';
+      res.textContent = `✗ ${e.message}`;
+    } finally {
+      ev.target.disabled = false;
+    }
+  });
+  return f;
 }
 
 function pintarPie() {
@@ -535,7 +614,7 @@ function pintarPie() {
   $('#proveedor-actual').textContent = orden.length
     ? `Modelo: ${PROVEEDORES.find((p) => p.id === orden[0]).nombre} · ${config.proveedores[orden[0]].modelo}` +
       (orden.length > 1 ? ` (+${orden.length - 1} de respaldo)` : '')
-    : 'Sin modelo configurado: abre Ajustes (⚙)';
+    : 'Sin modelo: conecta un proveedor en Ajustes (⚙)';
 }
 
 // ---------- botones y arranque ----------

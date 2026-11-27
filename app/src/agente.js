@@ -85,9 +85,10 @@ export function configuracionInicial() {
 
 /** Orden de intento: primero el activo y luego los demás que tengan key, en el orden de la lista. */
 export function ordenDeIntento(config) {
+  // El principal se usa siempre que tenga key; "habilitado" solo decide si los demás sirven de respaldo.
   const conKey = PROVEEDORES.filter((p) => {
     const c = config.proveedores[p.id];
-    return c?.habilitado && c.keys.some((k) => k.trim()) && c.modelo && c.base;
+    return (p.id === config.activo || c?.habilitado) && c?.keys.some((k) => k.trim()) && c.modelo && c.base;
   }).map((p) => p.id);
   return [config.activo, ...conKey.filter((id) => id !== config.activo)].filter((id) => conKey.includes(id));
 }
