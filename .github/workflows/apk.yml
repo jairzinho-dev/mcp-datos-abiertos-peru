@@ -55,5 +55,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view apk >/dev/null 2>&1 || gh release create apk --title "APK de la app" --notes "APK de depuración compilado automáticamente desde main. Se instala en Android o en emuladores como BlueStacks." --prerelease
+          # La etiqueta "apk" se mueve al commit compilado, para que el "Source code (zip)" de la
+          # release corresponda exactamente al APK publicado.
+          git tag -f apk "$GITHUB_SHA"
+          git push -f origin refs/tags/apk
+          NOTAS="APK de depuración compilado automáticamente desde main. Se instala en Android o en emuladores como BlueStacks.
+
+          Commit: ${GITHUB_SHA::7} ($(date -u +'%Y-%m-%d %H:%M UTC')). El código fuente (zip/tar.gz) de esta release corresponde a ese mismo commit."
+          gh release view apk >/dev/null 2>&1 || gh release create apk --title "APK de la app" --notes "$NOTAS" --prerelease --verify-tag
+          gh release edit apk --notes "$NOTAS"
           gh release upload apk datos-abiertos-peru.apk --clobber
