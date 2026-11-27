@@ -373,7 +373,8 @@ async function preguntar(pregunta) {
     });
     const meta =
       `${traza.proveedores.join(', ')} · ${traza.pasos.length} herramienta(s) · ${traza.llamadasLLM} llamada(s) al modelo` +
-      (traza.tokens.entrada ? ` · ${traza.tokens.entrada + traza.tokens.salida} tokens` : '');
+      (traza.tokens.entrada ? ` · ${traza.tokens.entrada.toLocaleString('es-PE')} tokens de entrada + ${traza.tokens.salida.toLocaleString('es-PE')} de salida` +
+        (traza.tokens.razonamiento ? ` (${traza.tokens.razonamiento.toLocaleString('es-PE')} de razonamiento)` : '') : '');
     quitarRegistroSiVacio();
     const vRespuesta = { t: 'a', md: texto, meta };
     conv.vista.push(vRespuesta);

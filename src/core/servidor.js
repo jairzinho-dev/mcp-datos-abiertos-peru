@@ -107,7 +107,7 @@ export function crearServidorMcp(plataforma) {
       entidades: d.entidades,
       modificado: d.modificado,
       relevancia: d.relevancia,
-      descripcion: ((t) => (t.length > 240 ? t.slice(0, 240) + '…' : t))(sinHtml(d.descripcion)),
+      descripcion: ((t) => (t.length > 160 ? t.slice(0, 160) + '…' : t))(sinHtml(d.descripcion)),
       formatos: [...new Set(d.recursos.map((r) => r.formato))],
       url: d.url,
     };

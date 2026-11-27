@@ -70,7 +70,7 @@ export const INSTRUCCIONES_SISTEMA = [
   '7. Responde en español, de forma breve y clara, para alguien sin formación técnica.',
 ].join('\n');
 
-const MAX_CHARS_HERRAMIENTA = 12_000;
+const MAX_CHARS_HERRAMIENTA = 8_000;
 
 // ---------- configuración ----------
 
@@ -94,6 +94,30 @@ export function ordenDeIntento(config) {
 }
 
 // ---------- esquemas ----------
+
+// Las definiciones de herramientas se reenvían en cada llamada al modelo: en la app van abreviadas
+// (las completas siguen en el servidor MCP para hosts como Claude Desktop).
+const HERRAMIENTAS_OCULTAS = new Set(['actualizar_catalogo']); // en la app es un botón de Ajustes
+
+function abreviar(texto, max) {
+  if (texto.length <= max) return texto;
+  const corte = texto.slice(0, max);
+  const punto = corte.lastIndexOf('. ');
+  return punto > max * 0.5 ? corte.slice(0, punto + 1) : corte.trimEnd() + '…';
+}
+
+function abreviarEsquema(e) {
+  if (Array.isArray(e)) return e.map(abreviarEsquema);
+  if (!e || typeof e !== 'object') return e;
+  const o = {};
+  for (const [k, v] of Object.entries(e)) {
+    if (k === 'description' && typeof v === 'string') o[k] = abreviar(v, 80);
+    else if (k === 'properties') o[k] = Object.fromEntries(Object.entries(v).map(([p, x]) => [p, abreviarEsquema(x)]));
+    else if (k === 'items' || k === 'anyOf') o[k] = abreviarEsquema(v);
+    else o[k] = v;
+  }
+  return o;
+}
 
 const CLAVES_ESQUEMA = new Set(['type', 'description', 'properties', 'required', 'items', 'enum', 'anyOf', 'minimum', 'maximum']);
 
@@ -216,6 +240,39 @@ function mensajeDeError(r) {
  *  - los resultados de herramientas de preguntas anteriores se recortan a 300 caracteres;
  *  - en modo "agresivo" (tras un error 413) también los de la pregunta actual, a 2 500.
  */
+/**
+ * Resume un resultado JSON conservando todos sus campos (para que el modelo pueda seguir citando
+ * URL, entidad o fecha): acorta los textos largos y deja solo los primeros elementos de las listas.
+ */
+export function resumirJson(v, { texto = 200, lista = 5, profundidad = 5 } = {}) {
+  if (typeof v === 'string') return v.length > texto ? v.slice(0, texto) + '…' : v;
+  if (Array.isArray(v)) {
+    const r = v.slice(0, lista).map((x) => resumirJson(x, { texto, lista, profundidad: profundidad - 1 }));
+    if (v.length > lista) r.push(`…(${v.length - lista} más)`);
+    return r;
+  }
+  if (v && typeof v === 'object') {
+    if (profundidad <= 0) return '{…}';
+    return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, resumirJson(x, { texto, lista, profundidad: profundidad - 1 })]));
+  }
+  return v;
+}
+
+function resumirContenido(contenido, opciones, maxTexto) {
+  try {
+    return JSON.stringify(resumirJson(JSON.parse(contenido), opciones));
+  } catch {
+    return contenido.length > maxTexto ? contenido.slice(0, maxTexto) + '…[recortado]' : contenido;
+  }
+}
+
+/**
+ * Vista reducida del historial para enviar al modelo (el historial completo no se toca). Los
+ * resultados que el modelo ya leyó se resumen; así cada llamada no reenvía todo completo.
+ *  - preguntas anteriores: resumen breve (textos de 120 caracteres, listas de 3);
+ *  - pregunta actual: los dos últimos resultados van completos y los anteriores, resumidos;
+ *  - modo "agresivo" (tras un error 413): también se resumen los dos últimos.
+ */
 export function compactarHistorial(historial, { agresivo = false } = {}) {
   let ultimaPregunta = -1;
   historial.forEach((m, i) => {
@@ -225,18 +282,20 @@ export function compactarHistorial(historial, { agresivo = false } = {}) {
   while (ultimaPregunta > 0 && historial[ultimaPregunta].texto?.startsWith('Ya no puedes usar más herramientas')) {
     ultimaPregunta = historial.slice(0, ultimaPregunta).map((m) => m.rol).lastIndexOf('usuario');
   }
-  const recortar = (m, n) =>
-    m.contenido.length > n ? { ...m, contenido: m.contenido.slice(0, n) + '…[resultado anterior recortado para ahorrar tokens]' } : m;
+  const delTurno = historial.map((m, i) => (m.rol === 'herramienta' && i > ultimaPregunta ? i : -1)).filter((i) => i >= 0);
+  const recientes = new Set(agresivo ? [] : delTurno.slice(-2));
   return historial.map((m, i) => {
     if (m.rol !== 'herramienta') return m;
-    if (i < ultimaPregunta) return recortar(m, 300);
-    return agresivo ? recortar(m, 2500) : m;
+    if (i < ultimaPregunta) return { ...m, contenido: resumirContenido(m.contenido, { texto: 80, lista: 2 }, 400) };
+    if (recientes.has(i)) return m;
+    return { ...m, contenido: resumirContenido(m.contenido, { texto: 200, lista: 5 }, 1500) };
   });
 }
 
 async function llamarOpenAI(http, { base, key, modelo }, historial, herramientas) {
   const gemini = /generativelanguage\.googleapis\.com|aiplatform\.googleapis\.com/.test(base) || /^gemini/i.test(modelo);
   const body = { model: modelo, messages: aOpenAI(historial, { gemini }) };
+  if (gemini) body.reasoning_effort = 'low';
   if (herramientas.length) {
     body.tools = herramientas.map((h) => ({
       type: 'function',
@@ -266,7 +325,9 @@ async function llamarOpenAI(http, { base, key, modelo }, historial, herramientas
       }
       return { id: t.id || `llamada_${Date.now()}_${i}`, nombre: t.function.name, args };
     }),
-    uso: r.data.usage ? { entrada: r.data.usage.prompt_tokens, salida: r.data.usage.completion_tokens } : null,
+    uso: r.data.usage
+      ? { entrada: r.data.usage.prompt_tokens, salida: r.data.usage.completion_tokens, razonamiento: r.data.usage.completion_tokens_details?.reasoning_tokens || 0 }
+      : null,
   };
 }
 
@@ -411,7 +472,9 @@ async function unaRonda({ http, config, historial, herramientas, onEvento }) {
  */
 export async function responder({ pregunta, historial, cliente, config, http, onEvento, maxPasos = 10 }) {
   const { tools } = await cliente.listTools();
-  const herramientas = tools.map((t) => ({ nombre: t.name, descripcion: t.description || '', esquema: limpiarEsquema(t.inputSchema) }));
+  const herramientas = tools
+    .filter((t) => !HERRAMIENTAS_OCULTAS.has(t.name))
+    .map((t) => ({ nombre: t.name, descripcion: abreviar(t.description || '', 260), esquema: abreviarEsquema(limpiarEsquema(t.inputSchema)) }));
 
   // La primera pregunta se envuelve con el prompt MCP del servidor (tercera primitiva de MCP).
   let texto = pregunta;
@@ -433,7 +496,7 @@ export async function responder({ pregunta, historial, cliente, config, http, on
 async function cicloDelAgente({ historial, texto, herramientas, cliente, config, http, onEvento, maxPasos }) {
   historial.push({ rol: 'usuario', texto });
 
-  const traza = { pasos: [], llamadasLLM: 0, tokens: { entrada: 0, salida: 0 }, proveedores: new Set() };
+  const traza = { pasos: [], llamadasLLM: 0, tokens: { entrada: 0, salida: 0, razonamiento: 0 }, proveedores: new Set() };
   for (let paso = 0; paso < maxPasos; paso++) {
     const r = await llamarConRotacion({ http, config, historial, herramientas, onEvento });
     traza.llamadasLLM++;
@@ -441,6 +504,7 @@ async function cicloDelAgente({ historial, texto, herramientas, cliente, config,
     if (r.uso) {
       traza.tokens.entrada += r.uso.entrada || 0;
       traza.tokens.salida += r.uso.salida || 0;
+      traza.tokens.razonamiento += r.uso.razonamiento || 0;
     }
     onEvento?.({ tipo: 'llm', proveedor: r.nombreProveedor, modelo: r.modelo, ms: r.ms });
     historial.push({ rol: 'asistente', texto: r.texto, llamadas: r.llamadas, crudoAnthropic: r.crudoAnthropic, crudoOpenAI: r.crudoOpenAI });
