@@ -194,9 +194,34 @@ const errorDeRespuesta = (r) =>
   new ErrorProveedor(mensajeDeError(r), { status: r.status, espera: r.status === 429 ? segundosDeEspera(r) : null });
 
 function mensajeDeError(r) {
-  const d = r.data;
-  const m = (typeof d === 'object' && (d?.error?.message || d?.error?.type || d?.message)) || (typeof d === 'string' ? d.slice(0, 200) : '');
+  const d = Array.isArray(r.data) ? r.data[0] : r.data; // Gemini a veces responde [{error: …}]
+  let m = (typeof d === 'object' && (d?.error?.message || d?.error?.type || d?.message)) || (typeof d === 'string' ? d.slice(0, 200) : '');
+  if (r.status === 404) m = `${m ? m + '. ' : ''}El modelo no existe para esta key: en Ajustes pulsa «Probar y cargar modelos» y elige otro de la lista`;
+  if (r.status === 413) m = `${m ? m + '. ' : ''}La conversación es demasiado larga para este modelo`;
   return `HTTP ${r.status}${m ? `: ${m}` : ''}`;
+}
+
+/**
+ * Vista reducida del historial para enviar al modelo (el historial completo no se toca):
+ *  - los resultados de herramientas de preguntas anteriores se recortan a 300 caracteres;
+ *  - en modo "agresivo" (tras un error 413) también los de la pregunta actual, a 2 500.
+ */
+export function compactarHistorial(historial, { agresivo = false } = {}) {
+  let ultimaPregunta = -1;
+  historial.forEach((m, i) => {
+    if (m.rol === 'usuario') ultimaPregunta = i;
+  });
+  // la última pregunta "real" (no el aviso de cierre) es la que abre el turno actual
+  while (ultimaPregunta > 0 && historial[ultimaPregunta].texto?.startsWith('Ya no puedes usar más herramientas')) {
+    ultimaPregunta = historial.slice(0, ultimaPregunta).map((m) => m.rol).lastIndexOf('usuario');
+  }
+  const recortar = (m, n) =>
+    m.contenido.length > n ? { ...m, contenido: m.contenido.slice(0, n) + '…[resultado anterior recortado para ahorrar tokens]' } : m;
+  return historial.map((m, i) => {
+    if (m.rol !== 'herramienta') return m;
+    if (i < ultimaPregunta) return recortar(m, 300);
+    return agresivo ? recortar(m, 2500) : m;
+  });
 }
 
 async function llamarOpenAI(http, { base, key, modelo }, historial, herramientas) {
@@ -330,10 +355,17 @@ async function unaRonda({ http, config, historial, herramientas, onEvento }) {
     const destino = { base: c.base, key, modelo: c.modelo };
     try {
       const t0 = Date.now();
-      const r =
-        def.tipo === 'anthropic'
-          ? await llamarAnthropic(http, destino, historial, herramientas)
-          : await llamarOpenAI(http, destino, historial, herramientas);
+      const llamar = (h) =>
+        def.tipo === 'anthropic' ? llamarAnthropic(http, destino, h, herramientas) : llamarOpenAI(http, destino, h, herramientas);
+      let r;
+      try {
+        r = await llamar(compactarHistorial(historial));
+      } catch (e) {
+        if (e.status !== 413) throw e;
+        // Petición demasiado grande para este modelo: se reintenta una vez con el historial más recortado.
+        onEvento?.({ tipo: 'rotacion', motivo: `${def.nombre}: petición demasiado grande; se reintenta con menos texto` });
+        r = await llamar(compactarHistorial(historial, { agresivo: true }));
+      }
       c.indiceKey = i; // la próxima vez se empieza por la key que funcionó
       return { ...r, proveedor: id, nombreProveedor: def.nombre, modelo: c.modelo, ms: Date.now() - t0, fallos };
     } catch (e) {

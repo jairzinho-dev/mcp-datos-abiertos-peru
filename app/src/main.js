@@ -136,7 +136,7 @@ async function preguntar(pregunta) {
         } else if (e.tipo === 'rotacion') {
           const d = document.createElement('div');
           d.className = 'paso mal';
-          d.textContent = `↻ No respondió ${e.motivo.length > 220 ? e.motivo.slice(0, 220) + "…" : e.motivo}`;
+          d.textContent = `↻ ${e.motivo.length > 220 ? e.motivo.slice(0, 220) + "…" : e.motivo}`;
           pasos.append(d);
         } else if (e.tipo === 'llm') {
           $('#proveedor-actual').textContent = `Respondiendo con ${e.proveedor} · ${e.modelo}`;
