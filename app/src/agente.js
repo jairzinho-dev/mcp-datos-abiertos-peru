@@ -248,7 +248,11 @@ export async function listarModelos(http, proveedor, { base, key }) {
     tipo === 'anthropic' ? { 'x-api-key': key, 'anthropic-version': ANTHROPIC_VERSION } : { Authorization: `Bearer ${key}` };
   const r = await http.pedir({ url: `${base.replace(/\/$/, '')}/models${tipo === 'anthropic' ? '?limit=100' : ''}`, method: 'GET', headers });
   if (r.status >= 400) throw new ErrorProveedor(mensajeDeError(r), { status: r.status });
-  return (r.data?.data || []).map((m) => String(m.id).replace(/^models\//, '')).sort();
+  const noChat = /whisper|tts|speech|audio|transcri|guard|moderation|embed|image|dall-e|vision-preview|realtime|search|playai|orpheus|imagen|veo|aqa/i;
+  return (r.data?.data || [])
+    .map((m) => String(m.id).replace(/^models\//, ''))
+    .filter((id) => !noChat.test(id))
+    .sort();
 }
 
 // ---------- rotación ----------

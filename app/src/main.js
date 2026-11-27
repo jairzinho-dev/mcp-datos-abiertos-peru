@@ -200,8 +200,8 @@ function pintarProveedores() {
         <textarea class="keys oculto" rows="2" spellcheck="false" autocomplete="off">${escapar(c.keys.join('\n'))}</textarea>
       </label>
       <label>Modelo
-        <input type="text" class="modelo" list="modelos-${p.id}" value="${escapar(c.modelo)}" spellcheck="false" />
-        <datalist id="modelos-${p.id}"></datalist>
+        <select class="lista-modelos"></select>
+        <input type="text" class="modelo oculta" value="${escapar(c.modelo)}" spellcheck="false" placeholder="Nombre exacto del modelo" />
       </label>
       <label>URL base
         <input type="url" class="base" value="${escapar(c.base)}" spellcheck="false" ${p.id === 'personalizado' ? '' : 'readonly'} />
@@ -212,6 +212,31 @@ function pintarProveedores() {
         <button class="secundario probar">Probar y cargar modelos</button>
         <span class="resultado"></span>
       </div>`;
+    // Lista desplegable de modelos (un <datalist> no sirve en el WebView de Android: solo sugiere lo
+    // que coincide con lo ya escrito). La última opción permite escribir el nombre a mano.
+    const lista = div.querySelector('.lista-modelos');
+    const campo = div.querySelector('.modelo');
+    const OTRO = '__otro__';
+    const pintarLista = () => {
+      const modelos = [...new Set([c.modelo, ...(c.modelos || [])].filter(Boolean))];
+      lista.innerHTML =
+        modelos.map((m) => `<option value="${escapar(m)}"${m === c.modelo ? ' selected' : ''}>${escapar(m)}</option>`).join('') +
+        `<option value="${OTRO}">Otro (escribir el nombre)…</option>`;
+      campo.classList.toggle('oculta', modelos.length > 0);
+      if (!modelos.length) lista.value = OTRO;
+    };
+    pintarLista();
+    lista.addEventListener('change', () => {
+      if (lista.value === OTRO) {
+        campo.classList.remove('oculta');
+        campo.focus();
+        return;
+      }
+      campo.classList.add('oculta');
+      campo.value = lista.value;
+      guardar();
+    });
+
     const guardar = () => {
       c.keys = div.querySelector('.keys').value.split('\n').map((k) => k.trim()).filter(Boolean);
       c.modelo = div.querySelector('.modelo').value.trim();
@@ -244,9 +269,11 @@ function pintarProveedores() {
       res.textContent = 'Probando…';
       try {
         const modelos = await listarModelos(plataforma.http, p.id, { base: c.base, key: c.keys[0] });
-        div.querySelector('datalist').innerHTML = modelos.map((m) => `<option value="${escapar(m)}"></option>`).join('');
+        c.modelos = modelos;
+        guardarConfig();
+        pintarLista();
         res.className = 'resultado ok';
-        res.textContent = `✓ key válida · ${modelos.length} modelos (toca el campo Modelo para elegir)`;
+        res.textContent = `✓ key válida · ${modelos.length} modelos de chat: elígelo en la lista Modelo`;
       } catch (e) {
         res.className = 'resultado mal';
         res.textContent = `✗ ${e.message}`;

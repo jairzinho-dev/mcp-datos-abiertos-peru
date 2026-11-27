@@ -113,7 +113,7 @@ h1, h2, h3 { margin: 0; line-height: 1.2; }
 .proveedor .cab { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .proveedor .cab strong { font-size: 15px; }
 .proveedor label { font-size: 13px; color: var(--tenue); display: flex; flex-direction: column; gap: 3px; }
-.proveedor input[type="text"], .proveedor input[type="url"], .proveedor textarea {
+.proveedor input[type="text"], .proveedor input[type="url"], .proveedor textarea, .proveedor select {
   font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--borde); border-radius: 8px; background: var(--fondo); color: var(--texto); width: 100%;
 }
 .proveedor textarea.oculto { -webkit-text-security: disc; }
