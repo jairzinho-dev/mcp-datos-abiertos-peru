@@ -1,0 +1,102 @@
+{
+ "fecha": "2026-11-27T03:23:44.824Z",
+ "catalogo": {
+  "datasets": 3665,
+  "generado": "2026-11-27T03:13:32.809Z"
+ },
+ "escenarios": {
+  "titulo": {
+   "consultas": 300,
+   "ejemplos": [
+    {
+     "consulta": "Instituto Agropecuaria Estadística",
+     "objetivo": "Encuesta Nacional Agropecuaria (ENA) 2025 - [Instituto Nacional de Estadística e Informática - INEI]"
+    },
+    {
+     "consulta": "presentados inscritos Títulos",
+     "objetivo": "Títulos presentados e inscritos [SUNARP]"
+    },
+    {
+     "consulta": "Papeletas 2025 Pagadas",
+     "objetivo": "Papeletas Pagadas 2025 (III Trimestre)"
+    },
+    {
+     "consulta": "Trimestre Nacional 2022",
+     "objetivo": "Encuesta Permanente de Empleo (EPE) 2022 Trimestre Móvil (Jun-Jul-Ago) - [Instituto Nacional de Estadística e Informática - INEI]"
+    },
+    {
+     "consulta": "Ucayali Paranapura censales",
+     "objetivo": "Base de datos censales socioeconómicos y culturales de comunidades de las cuencas Ampiyacu, Urarinas, Nanay, Paranapura, Tigre y Ucayali (2004-2012)"
+    }
+   ],
+   "resultados": {
+    "Coincidencia": {
+     "acierto1": 0.3933333333333333,
+     "acierto5": 0.67,
+     "acierto10": 0.7666666666666667,
+     "mrr": 0.522916835329403
+    },
+    "BM25": {
+     "acierto1": 0.5533333333333333,
+     "acierto5": 0.7966666666666666,
+     "acierto10": 0.8466666666666667,
+     "mrr": 0.6679042580713044
+    },
+    "BM25F": {
+     "acierto1": 0.59,
+     "acierto5": 0.8033333333333333,
+     "acierto10": 0.85,
+     "mrr": 0.6910168442168992
+    }
+   }
+  },
+  "descripcion": {
+   "consultas": 300,
+   "ejemplos": [
+    {
+     "consulta": "corte fecha Local codigo",
+     "objetivo": "Padrón Regional de Instituciones Educativas de la Región Cajamarca - [Gobierno Regional Cajamarca – GORE CAJAMARCA]"
+    },
+    {
+     "consulta": "permite investigación rural ámbito",
+     "objetivo": "Encuesta Nacional de Hogares (ENAHO) 2021-[Instituto Nacional de Estadística e Informática – INEI]"
+    },
+    {
+     "consulta": "Este toda público e22377ff",
+     "objetivo": "Casos agrupados mensualmente de violencia contra la mujer y los integrantes del grupo familiar, atendidos por establecimiento de salud en la Región Piura [Gobierno Regional Piura - GRP]"
+    },
+    {
+     "consulta": "especies conservar Este dasométricas",
+     "objetivo": "Distribución de árboles semilleros declarados para la aprobación de los planes de manejo forestal [Organismo de Supervisión de los Recursos Forestales y de Fauna Silvestre - OSINFOR]"
+    },
+    {
+     "consulta": "investigadores investigaciones Desarrollar class",
+     "objetivo": "Encuesta Permanente de Empleo (EPE) 2005 Trimestre Móvil (Set-Oct-Nov) - [Instituto Nacional de Estadística e Informática - INEI]"
+    }
+   ],
+   "resultados": {
+    "Coincidencia": {
+     "acierto1": 0.4666666666666667,
+     "acierto5": 0.7066666666666667,
+     "acierto10": 0.7933333333333333,
+     "mrr": 0.578909526309759
+    },
+    "BM25": {
+     "acierto1": 0.5166666666666667,
+     "acierto5": 0.74,
+     "acierto10": 0.81,
+     "mrr": 0.6227732384009395
+    },
+    "BM25F": {
+     "acierto1": 0.5133333333333333,
+     "acierto5": 0.75,
+     "acierto10": 0.81,
+     "mrr": 0.6184151695934159
+    }
+   }
+  }
+ },
+ "ms_por_busqueda": 0.44,
+ "ms_construir_indice": 94,
+ "terminos_vocabulario": 7904
+}

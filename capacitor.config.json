@@ -1,0 +1,7 @@
+{
+  "appId": "pe.edu.ulima.datosabiertos",
+  "appName": "Datos Abiertos Perú",
+  "webDir": "dist",
+  "android": { "appendUserAgent": "datos-abiertos-peru-app" },
+  "plugins": { "CapacitorHttp": { "enabled": false } }
+}

@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#b91c1c" />
+    <title>Datos Abiertos Perú</title>
+    <link rel="stylesheet" href="./src/estilos.css" />
+  </head>
+  <body>
+    <header class="barra">
+      <div class="marca">
+        <span class="logo" aria-hidden="true">◧</span>
+        <div>
+          <h1>Datos Abiertos Perú</h1>
+          <p id="estado-catalogo" class="sub">Cargando catálogo…</p>
+        </div>
+      </div>
+      <button id="btn-ajustes" class="icono" aria-label="Ajustes">⚙</button>
+    </header>
+
+    <main id="vista-chat" class="vista">
+      <section id="mensajes" class="mensajes" aria-live="polite">
+        <div id="bienvenida" class="bienvenida">
+          <h2>Pregunta sobre datos públicos del Perú</h2>
+          <p>
+            La app busca en la Plataforma Nacional de Datos Abiertos, calcula la cifra con los archivos oficiales y te dice
+            de dónde salió. Usa el modelo de lenguaje que configures en Ajustes.
+          </p>
+          <div class="ejemplos">
+            <button class="ejemplo">¿Cuántos fallecidos por COVID-19 registró Tacna, por sexo?</button>
+            <button class="ejemplo">¿Qué entidades publican más datasets?</button>
+            <button class="ejemplo">¿Hay datos de ejecución presupuestal de municipalidades?</button>
+            <button class="ejemplo">¿Qué datos hay sobre casos de dengue?</button>
+          </div>
+        </div>
+      </section>
+      <form id="formulario" class="compositor">
+        <textarea id="entrada" rows="1" placeholder="Escribe tu pregunta…" required></textarea>
+        <button id="btn-enviar" type="submit" aria-label="Enviar">➤</button>
+      </form>
+      <p id="proveedor-actual" class="pie"></p>
+    </main>
+
+    <section id="vista-ajustes" class="vista oculta">
+      <div class="ajustes">
+        <div class="fila-titulo">
+          <h2>Ajustes</h2>
+          <button id="btn-cerrar-ajustes" class="secundario">Volver al chat</button>
+        </div>
+
+        <article class="tarjeta">
+          <h3>Catálogo de la PNDA</h3>
+          <p id="detalle-catalogo" class="sub">—</p>
+          <button id="btn-actualizar" class="secundario">Actualizar catálogo ahora</button>
+        </article>
+
+        <article class="tarjeta">
+          <h3>Modelos de lenguaje</h3>
+          <p class="sub">
+            Agrega la API key de uno o varios proveedores (puedes poner varias keys, una por línea). Si el principal falla
+            o se queda sin cuota, la app rota sola a la siguiente key y luego al siguiente proveedor. Las keys se guardan
+            solo en este dispositivo.
+          </p>
+          <div id="lista-proveedores"></div>
+        </article>
+
+        <article class="tarjeta">
+          <h3>Conversación</h3>
+          <button id="btn-nueva" class="secundario">Empezar una conversación nueva</button>
+        </article>
+
+        <p class="sub centro">
+          Proyecto académico · Universidad de Lima · Código:
+          github.com/jairzinho-dev/mcp-datos-abiertos-peru
+        </p>
+      </div>
+    </section>
+
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>

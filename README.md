@@ -1,10 +1,15 @@
 # mcp-datos-abiertos-peru
 
-Servidor [Model Context Protocol (MCP)](https://modelcontextprotocol.io) que da a un modelo de lenguaje acceso directo a la **Plataforma Nacional de Datos Abiertos del Perú** ([datosabiertos.gob.pe](https://www.datosabiertos.gob.pe)): buscar datasets, inspeccionarlos y calcular cifras sobre sus CSV, citando siempre la fuente.
+Servidor [Model Context Protocol (MCP)](https://modelcontextprotocol.io) **y app Android** que dan a un modelo de lenguaje acceso directo a la **Plataforma Nacional de Datos Abiertos del Perú** ([datosabiertos.gob.pe](https://www.datosabiertos.gob.pe)): buscar datasets, inspeccionarlos y calcular cifras sobre sus CSV, citando siempre la fuente.
+
+- **Servidor MCP** (`src/server.js`): se conecta a Claude Desktop, VS Code o cualquier host MCP por stdio.
+- **App Android** (`app/`): chat que lleva dentro el mismo servidor MCP y funciona con la API key de **cualquier LLM** (Gemini, Groq, OpenRouter, OpenAI, Claude, DeepSeek u otro compatible con OpenAI), con rotación automática entre keys y proveedores. Se instala en un teléfono o en emuladores como BlueStacks.
+
+**Descargar el APK:** [Releases → apk](https://github.com/jairzinho-dev/mcp-datos-abiertos-peru/releases/tag/apk) (se compila solo con GitHub Actions en cada cambio de `main`).
 
 Proyecto final del curso *Inteligencia Artificial Aplicada* (Universidad de Lima, 2026-2). Asociado al **ODS 16, meta 16.10**: garantizar el acceso público a la información.
 
-> **Estado:** en desarrollo, todavía no se ha validado de punta a punta contra el portal (ver [Limitaciones](#limitaciones)).
+> **Estado:** prueba de punta a punta superada contra el portal real (nov-2026): `node scripts/probar.js`.
 
 ## Qué expone
 
@@ -23,18 +28,45 @@ Proyecto final del curso *Inteligencia Artificial Aplicada* (Universidad de Lima
 ## Arquitectura
 
 ```
-Host (Claude Desktop / VS Code) ──JSON-RPC 2.0 por stdio──▶ src/server.js
-                                                              │
-                         src/indice.js ◀── catálogo (caché 24 h, .cache/)
-                         src/ckan.js   ──▶ https://www.datosabiertos.gob.pe/api/3/action/*
-                         src/csv.js    ──▶ descarga en streaming de los recursos CSV
+Host (Claude Desktop / VS Code) ──JSON-RPC 2.0 por stdio──▶ src/server.js ─┐
+                                                                           ├─▶ src/core/servidor.js (tools, resources, prompts)
+App Android: chat + agente ──JSON-RPC 2.0 en memoria─────▶ servidor MCP ───┘        │
+      │                                                                    src/core/indice.js  BM25F sobre el catálogo
+      └─▶ API del LLM elegido (key del usuario)                            src/core/ckan.js    API CKAN del portal
+                                                                           src/core/csv.js     lectura y agregación de CSV
 ```
+
+El núcleo (`src/core/`) es isomórfico: no usa APIs de Node. La red, el almacenamiento y los registros los aporta una *plataforma*: `src/plataforma-node.js` (fetch en streaming, caché en disco) o `app/src/plataforma-movil.js` (CapacitorHttp nativo, sin CORS; IndexedDB).
 
 - **Búsqueda local:** el endpoint `package_search` del portal no funciona (Drupal interpreta `q` como ruta), así que se descarga el catálogo con `current_package_list_with_resources` y se indexa localmente.
 - **Streaming:** los CSV se procesan fila a fila (hay archivos de más de 1 GB) y tienen un tope configurable (`max_mb`, 300 MB por defecto). Si el tope se alcanza, la respuesta lo indica (`lectura_completa: false`).
 - **Detección automática** de codificación (UTF-8 / Windows-1252) y separador (`,` `;` `|` tab).
 - **Seguridad:** solo se leen recursos del catálogo o de dominios `.gob.pe` (evita SSRF). Las respuestas se recortan a 60 000 caracteres.
 - **Trazabilidad:** cada llamada a una tool se registra en `logs/llamadas.jsonl` (fecha, argumentos, tiempo, éxito).
+
+## App Android
+
+| Archivo | Qué hace |
+|---|---|
+| `app/src/main.js` | Interfaz (chat y ajustes); conecta cliente y servidor MCP con `InMemoryTransport` |
+| `app/src/agente.js` | Ciclo ReAct: el LLM pide herramientas MCP hasta poder responder. Proveedores, rotación de keys y traducción del historial a los formatos OpenAI y Anthropic |
+| `app/src/plataforma-movil.js` | Red nativa (CapacitorHttp), IndexedDB, lectura de CSV con `Range` hasta 40 MB |
+
+**Rotación de proveedores:** en Ajustes se puede poner una o varias keys por proveedor. Si una key falla (cuota, 429, key inválida, caída) se prueba la siguiente; si se acaban, el siguiente proveedor. Las keys que fallan quedan en espera 1 min (10 min si son inválidas). El historial se guarda en un formato neutro, así que el cambio de proveedor ocurre a mitad de la conversación sin perderla.
+
+**Instalar en BlueStacks:** descarga `datos-abiertos-peru.apk` desde la release y arrástralo a la ventana de BlueStacks (o *Instalar APK*). Abre la app, ve a Ajustes, pega una API key (Gemini y Groq tienen nivel gratuito) y pregunta.
+
+**Compilar localmente** (requiere JDK 21 y Android SDK): `npm run app:build && npx cap add android && npx cap sync android && cd android && ./gradlew assembleDebug`.
+
+**Probar el agente sin el teléfono** (mismo código del APK):
+
+```bash
+LLM_PROVEEDOR=gemini LLM_API_KEY=tu_key node scripts/chat.js "¿Cuántos fallecidos por COVID registró Tacna, por sexo?"
+```
+
+## Evaluación del buscador
+
+`node scripts/evaluar-busqueda.js 300` mide, con consultas reproducibles de "dataset conocido", el acierto@k y el MRR de BM25F frente a BM25 de un solo campo y a una coincidencia simple de palabras. Resultados en `docs/resultados-busqueda.json`.
 
 ## Instalación
 
@@ -88,13 +120,14 @@ En `claude_desktop_config.json`:
 
 ## Limitaciones
 
-- El portal tiene un WAF que rechaza (HTTP 418) a clientes sin identificación. Falta confirmar que acepta el User-Agent del proyecto.
+- El portal tiene un WAF que rechaza (HTTP 418) a clientes sin identificación; acepta el User-Agent honesto del proyecto.
+- En la app, cada CSV se lee hasta 40 MB (memoria del teléfono). Si el archivo es más grande, la respuesta lo marca como parcial.
 - Solo se leen CSV sin comprimir. Los recursos ZIP, XLSX y PDF se listan, pero no se consultan.
 - La calidad depende de los metadatos publicados: hay enlaces rotos, formatos mal etiquetados y datasets desactualizados.
 
 ## Uso de IA
 
-De acuerdo con los lineamientos del curso, el **código** de este repositorio se desarrolló con asistencia de IA generativa (Claude, de Anthropic, mediante Claude Code). El diseño, la validación y la redacción del informe son responsabilidad del grupo.
+De acuerdo con los lineamientos del curso, el **código** de este repositorio (servidor y app) se desarrolló con asistencia de IA generativa (Claude, de Anthropic, mediante Claude Code). El diseño, la validación y la redacción del informe son responsabilidad del grupo.
 
 ## Licencia
 

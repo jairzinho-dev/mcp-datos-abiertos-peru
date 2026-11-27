@@ -16,7 +16,7 @@ await cliente.connect(
 
 const llamar = async (name, args) => {
   const t0 = Date.now();
-  const r = await cliente.callTool({ name, arguments: args });
+  const r = await cliente.callTool({ name, arguments: args }, undefined, { timeout: 15 * 60_000 });
   const texto = r.content[0].text;
   console.log(`\n### ${name} (${Date.now() - t0} ms)${r.isError ? ' ERROR' : ''}\n${texto.slice(0, 1500)}`);
   return r.isError ? null : JSON.parse(texto);

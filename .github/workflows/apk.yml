@@ -1,0 +1,59 @@
+name: Compilar APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - run: npm ci
+
+      # Catálogo empaquetado en el APK para que el primer arranque no tenga que esperar la descarga.
+      # Si el portal no responde desde el runner, la app lo descargará al abrirse.
+      - name: Catálogo semilla
+        run: node scripts/exportar-catalogo.js app/public/catalogo.json
+        continue-on-error: true
+
+      - run: npx vite build
+
+      - name: Proyecto Android
+        run: |
+          npx cap add android
+          npx cap sync android
+
+      - name: Compilar APK (debug)
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+          cp app/build/outputs/apk/debug/app-debug.apk ../datos-abiertos-peru.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: datos-abiertos-peru-apk
+          path: datos-abiertos-peru.apk
+
+      - name: Publicar en la release "apk"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view apk >/dev/null 2>&1 || gh release create apk --title "APK de la app" --notes "APK de depuración compilado automáticamente desde main. Se instala en Android o en emuladores como BlueStacks." --prerelease
+          gh release upload apk datos-abiertos-peru.apk --clobber

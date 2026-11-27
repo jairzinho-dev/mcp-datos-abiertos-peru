@@ -1,7 +1,7 @@
 {
   "name": "mcp-datos-abiertos-peru",
-  "version": "0.1.0",
-  "description": "Servidor MCP que da a un LLM acceso directo a la Plataforma Nacional de Datos Abiertos del Perú (datosabiertos.gob.pe)",
+  "version": "0.2.0",
+  "description": "Servidor MCP y app Android que dan a un LLM acceso directo a la Plataforma Nacional de Datos Abiertos del Perú (datosabiertos.gob.pe)",
   "type": "module",
   "main": "src/server.js",
   "bin": {
@@ -10,16 +10,28 @@
   "scripts": {
     "start": "node src/server.js",
     "probar": "node scripts/probar.js",
-    "inspector": "npx @modelcontextprotocol/inspector node src/server.js"
+    "chat": "node scripts/chat.js",
+    "evaluar": "node scripts/evaluar-busqueda.js",
+    "inspector": "npx @modelcontextprotocol/inspector node src/server.js",
+    "app:dev": "vite",
+    "app:build": "vite build",
+    "app:android": "vite build && cap sync android"
   },
   "engines": {
     "node": ">=20"
   },
   "license": "MIT",
   "dependencies": {
+    "@capacitor/android": "^8.6.3",
+    "@capacitor/core": "^8.6.3",
     "@modelcontextprotocol/sdk": "^1.31.0",
-    "csv-parse": "^7.0.3",
-    "iconv-lite": "^0.7.3",
+    "dompurify": "^3.5.0",
+    "marked": "^18.3.0",
     "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.6.3",
+    "csv-parse": "^7.0.3",
+    "vite": "^8.4.0"
   }
 }
