@@ -96,6 +96,7 @@ function normalizar(d, base) {
 export function normalizarFormato(formato, url = '') {
   let f = String(formato || '').toLowerCase().replace(/^\./, '').trim();
   if (f === 'cvs') f = 'csv';
+  if (f === 'xlb') f = 'xls';
   if (!f || f === 'data' || f === '.' || f === 'url') {
     const ext = /\.([a-z0-9]{2,5})(?:$|\?)/i.exec(url)?.[1]?.toLowerCase();
     f = ext || 'desconocido';

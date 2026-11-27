@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { crearCkan } from './ckan.js';
 import { crearIndice } from './indice.js';
 import { crearLectorCsv, LISTA_OPERADORES } from './csv.js';
+import { crearLectorDocumentos } from './documentos.js';
 
 export const VERSION = '0.2.0';
 
@@ -40,6 +41,7 @@ export function crearServidorMcp(plataforma) {
     semilla: plataforma.semilla,
   });
   const csv = crearLectorCsv(plataforma, { maxMbDefecto: plataforma.maxMbDefecto ?? 300 });
+  const docs = crearLectorDocumentos(plataforma);
   const MAX_SALIDA = plataforma.maxSalida ?? 60_000;
   const registrar = plataforma.registrar || (() => {});
 
@@ -163,22 +165,75 @@ export function crearServidorMcp(plataforma) {
     }),
   );
 
+  const paramsTabla = {
+    hoja: z.string().optional().describe('Hoja de un Excel (nombre o número, empezando en 1). Por defecto, la primera con datos.'),
+    archivo: z.string().optional().describe('Archivo dentro de un ZIP (ruta tal como la lista explorar_zip). Por defecto, la tabla más grande.'),
+    fila_encabezado: z.number().int().min(1).optional().describe('Fila de Excel donde están los encabezados, si la detección automática falla'),
+  };
+
   server.registerTool(
     'previsualizar_recurso',
     {
-      title: 'Previsualizar recurso CSV',
+      title: 'Previsualizar recurso tabular',
       description:
-        'Lee solo el inicio de un recurso CSV y devuelve sus columnas (con tipo inferido y ejemplo) y las primeras filas. ' +
+        'Lee el inicio de un recurso tabular y devuelve sus columnas (con tipo inferido y ejemplo) y las primeras filas. ' +
+        'Acepta CSV, Excel (XLSX y XLS antiguo, con varias hojas) y CSV o Excel dentro de un ZIP; el tipo real se detecta ' +
+        'por el contenido. En Excel, detecta la fila de encabezados aunque haya títulos arriba e informa las hojas. ' +
         'Úsalo SIEMPRE antes de consultar_recurso para conocer los nombres exactos de las columnas.',
       inputSchema: {
         recurso_id: z.string().optional().describe('`id` del recurso (de ver_dataset). Preferido.'),
         url: z.string().url().optional().describe('URL directa del recurso, si no se tiene el id'),
         filas: z.number().int().min(1).max(50).default(5),
+        ...paramsTabla,
       },
     },
-    envolver('previsualizar_recurso', async ({ recurso_id, url, filas }) => {
+    envolver('previsualizar_recurso', async ({ recurso_id, url, filas, ...opciones }) => {
       const r = await resolverRecurso({ recurso_id, url });
-      return { ...r, ...(await csv.previsualizar(r.url, { filas })) };
+      return { ...r, ...(await csv.previsualizar(r.url, { filas, ...opciones })) };
+    }),
+  );
+
+  server.registerTool(
+    'leer_documento',
+    {
+      title: 'Leer documento',
+      description:
+        'Descarga un documento y lo convierte a Markdown para leerlo: PDF (texto por páginas, con títulos y tablas aproximadas), ' +
+        'Word DOCX (títulos, listas y tablas), HTML, texto, o una hoja de cálculo pequeña como tabla. También lee un documento ' +
+        'dentro de un ZIP (parámetro "archivo"). Útil para diccionarios de datos, metadatos, informes y notas metodológicas. ' +
+        'Si el texto es largo, devuelve siguiente_pagina (PDF) o siguiente_caracter (otros) para seguir leyendo.',
+      inputSchema: {
+        recurso_id: z.string().optional().describe('`id` del recurso (de ver_dataset). Preferido.'),
+        url: z.string().url().optional(),
+        archivo: z.string().optional().describe('Documento dentro de un ZIP'),
+        desde_pagina: z.number().int().min(1).default(1).describe('Solo PDF: página desde la que leer'),
+        desde_caracter: z.number().int().min(0).default(0).describe('DOCX, HTML y texto: posición desde la que leer'),
+        max_caracteres: z.number().int().min(500).max(40000).default(10000),
+      },
+    },
+    envolver('leer_documento', async ({ recurso_id, url, ...opciones }) => {
+      const r = await resolverRecurso({ recurso_id, url });
+      return { ...r, ...(await docs.leer(r.url, opciones)) };
+    }),
+  );
+
+  server.registerTool(
+    'explorar_zip',
+    {
+      title: 'Explorar ZIP',
+      description:
+        'Descomprime un recurso ZIP y describe su contenido: lista de archivos con tipo y tamaño, cuántos hay de cada tipo, y ' +
+        'una vista rápida (columnas y primeras filas) de los CSV y Excel que contiene. Úsalo antes de consultar o leer un ' +
+        'archivo de adentro con previsualizar_recurso, consultar_recurso o leer_documento (parámetro "archivo").',
+      inputSchema: {
+        recurso_id: z.string().optional().describe('`id` del recurso (de ver_dataset). Preferido.'),
+        url: z.string().url().optional(),
+        max_vistas: z.number().int().min(0).max(10).default(5).describe('Cuántas tablas de adentro previsualizar'),
+      },
+    },
+    envolver('explorar_zip', async ({ recurso_id, url, max_vistas }) => {
+      const r = await resolverRecurso({ recurso_id, url });
+      return { ...r, ...(await docs.explorarZip(r.url, { max_vistas })) };
     }),
   );
 
@@ -195,9 +250,9 @@ export function crearServidorMcp(plataforma) {
   server.registerTool(
     'consultar_recurso',
     {
-      title: 'Consultar recurso CSV',
+      title: 'Consultar recurso tabular',
       description:
-        'Filtra y agrega un CSV completo en streaming y devuelve el resultado calculado. ' +
+        'Filtra y agrega un recurso tabular completo (CSV en flujo, Excel XLSX/XLS, o CSV/Excel dentro de un ZIP) y devuelve el resultado calculado. ' +
         'Úsalo para responder preguntas cuantitativas ("¿cuántos…?", "¿cuánto se gastó…?", "top 5 de…"). ' +
         `Operadores: ${LISTA_OPERADORES.join(', ')} (comparación sin tildes ni mayúsculas; "en" acepta lista). ` +
         'Si no se indica agrupar_por, devuelve filas que cumplen los filtros. Revisa `lectura_completa`: si es false, ' +
@@ -211,6 +266,7 @@ export function crearServidorMcp(plataforma) {
         columnas: z.array(z.string()).optional().describe('Columnas a devolver cuando no se agrupa'),
         limite: z.number().int().min(1).max(200).default(20).describe('Máximo de grupos o filas devueltos'),
         max_mb: z.number().min(1).max(3000).optional().describe('Tope de lectura en MB'),
+        ...paramsTabla,
       },
     },
     envolver('consultar_recurso', async ({ recurso_id, url, ...opciones }) => {
@@ -290,7 +346,9 @@ export function crearServidorMcp(plataforma) {
             text:
               `Responde esta pregunta usando SOLO datos de la Plataforma Nacional de Datos Abiertos del Perú:\n\n"${pregunta}"\n\n` +
               'Procedimiento: (1) buscar_datasets; (2) ver_dataset del más pertinente; (3) previsualizar_recurso para ' +
-              'conocer las columnas; (4) consultar_recurso para calcular la cifra. No inventes números: si los datos no ' +
+              'conocer las columnas (sirve para CSV, Excel y tablas dentro de ZIP; con un ZIP puedes usar antes explorar_zip); ' +
+              '(4) consultar_recurso para calcular la cifra. Si el dataset trae un diccionario de datos o una nota en PDF o DOCX, ' +
+              'léelo con leer_documento para entender las columnas. No inventes números: si los datos no ' +
               'alcanzan, dilo. Termina citando dataset, entidad, fecha de actualización y URL, e indica si la lectura fue parcial.',
           },
         },

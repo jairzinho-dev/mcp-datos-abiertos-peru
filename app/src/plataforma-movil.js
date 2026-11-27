@@ -97,6 +97,15 @@ export function crearPlataformaMovil({ log = console.log } = {}) {
     ttlHoras: 24 * 7, // en el móvil el catálogo se renueva semanalmente (o a mano desde Ajustes)
     maxMbDefecto: 25,
     maxMbTope: MAX_MB_MOVIL,
+    maxMbCompleto: 20, // XLSX, ZIP y PDF se cargan completos en memoria: tope menor en el teléfono
+
+    /** pdf.js se carga solo cuando se lee un PDF; su worker va empaquetado en el APK. */
+    async cargarPdfjs() {
+      const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+      const { default: worker } = await import('pdfjs-dist/legacy/build/pdf.worker.min.mjs?url');
+      pdfjs.GlobalWorkerOptions.workerSrc = worker;
+      return pdfjs;
+    },
     maxSalida: 30_000,
     log,
     almacen,

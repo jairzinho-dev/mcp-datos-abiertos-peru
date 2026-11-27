@@ -17,6 +17,8 @@ export function crearPlataformaNode(env = process.env) {
     userAgent: env.PNDA_USER_AGENT || undefined,
     ttlHoras: Number(env.PNDA_TTL_HORAS || 24),
     maxMbDefecto: Number(env.PNDA_MAX_MB || 300),
+    maxMbCompleto: Number(env.PNDA_MAX_MB_COMPLETO || 200), // XLSX, ZIP y PDF se leen completos en memoria
+    cargarPdfjs: () => import('pdfjs-dist/legacy/build/pdf.mjs'),
     log,
 
     async pedirJson(url, { headers, timeoutMs }) {

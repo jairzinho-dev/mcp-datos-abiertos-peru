@@ -83,6 +83,7 @@ h1, h2, h3 { margin: 0; line-height: 1.2; }
 .pasos { align-self: flex-start; width: 92%; display: flex; flex-direction: column; gap: 4px; }
 .paso { font-size: 13px; color: var(--tenue); background: var(--superficie); border: 1px dashed var(--borde); border-radius: 10px; padding: 6px 10px; }
 .paso summary { cursor: pointer; list-style: none; }
+.paso small { overflow-wrap: anywhere; }
 .paso summary::-webkit-details-marker { display: none; }
 .paso .nombre { font-family: ui-monospace, monospace; color: var(--texto); }
 .paso.ok .estado { color: var(--ok); }
