@@ -363,6 +363,10 @@ async function preguntar(pregunta) {
         } else if (e.tipo === 'espera') {
           nota(`⏳ Esperando ${e.segundos} s por el ${e.motivo}; luego se reintenta…`);
           estadoEspera(`Esperando ${e.segundos} s`);
+        } else if (e.tipo === 'modelo') {
+          nota(`↻ ${e.proveedor}: el modelo ${e.de} ya no está disponible para tu key; se cambió a ${e.a}`);
+          guardarConfig();
+          pintarPie();
         } else if (e.tipo === 'rotacion') {
           nota(`↻ ${e.motivo.length > 220 ? e.motivo.slice(0, 220) + '…' : e.motivo}`, true);
         } else if (e.tipo === 'llm') {
@@ -553,7 +557,8 @@ function formularioProveedor(p) {
   const lista = f.querySelector('.lista-modelos');
   const res = f.querySelector('.resultado');
   const pintarModelos = () => {
-    const modelos = c.modelos?.length ? c.modelos : [c.modelo].filter(Boolean);
+    const malos = c.modelosNoDisponibles || [];
+    const modelos = [...new Set([c.modelo, ...(c.modelos || [])].filter((m) => m && (m === c.modelo || !malos.includes(m))))];
     lista.innerHTML = modelos.map((m) => `<option value="${escapar(m)}"${m === c.modelo ? ' selected' : ''}>${escapar(m)}</option>`).join('');
   };
   pintarModelos();
