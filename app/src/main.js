@@ -276,8 +276,20 @@ function pintarProveedores() {
       try {
         const modelos = await listarModelos(plataforma.http, p.id, { base: c.base, key: c.keys[0] });
         c.modelos = modelos;
+        // Si el modelo elegido ya no está disponible para esta key (p. ej. Google cerró los Gemini 2.5
+        // a cuentas nuevas), se elige el "flash" estable más reciente de la lista.
+        if (!modelos.includes(c.modelo)) {
+          const version = (id) => parseFloat(/(\d+(?:\.\d+)?)/.exec(id)?.[1] || '0');
+          const estables = modelos.filter((m) => /flash/i.test(m) && !/lite|preview|exp|image|tts|audio|live|thinking/i.test(m));
+          const mejor = estables.sort((a, b) => version(b) - version(a))[0];
+          if (mejor) {
+            c.modelo = mejor;
+            campo.value = mejor;
+          }
+        }
         guardarConfig();
         pintarLista();
+        pintarPie();
         res.className = 'resultado ok';
         res.textContent = `✓ key válida · ${modelos.length} modelos de chat: elígelo en la lista Modelo`;
       } catch (e) {
